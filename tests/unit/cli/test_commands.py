@@ -162,3 +162,22 @@ def test_commands_apply_passes_dry_run_false(monkeypatch):
     )
     assert exit_code == 0
     assert captured["dry_run"] is False
+
+
+def test_commands_plan_fails_fast_for_github_oidc_without_id_token(monkeypatch):
+    constructed = False
+
+    def _fail_workspace_client(**_):
+        nonlocal constructed
+        constructed = True
+        raise AssertionError("WorkspaceClient should not be constructed")
+
+    monkeypatch.setenv("DATABRICKS_AUTH_TYPE", "github-oidc")
+    monkeypatch.delenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", raising=False)
+    monkeypatch.setattr(cli, "WorkspaceClient", _fail_workspace_client)
+
+    exit_code = cli.run_cli(
+        ["plan", "--config-dir", "cfg", "--warehouse-id", "wh"],
+    )
+    assert exit_code == 3
+    assert constructed is False

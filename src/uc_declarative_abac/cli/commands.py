@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -87,7 +88,14 @@ def _configure_logging(namespace: argparse.Namespace) -> None:
         level = logging.DEBUG
     else:
         level = logging.INFO
-    logging.basicConfig(level=level, format="%(message)s", force=True)
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        root_logger.setLevel(level)
+        formatter = logging.Formatter("%(message)s")
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+        return
+    logging.basicConfig(level=level, format="%(message)s")
 
 
 def _require_config_dir(settings: RunSettings) -> Path:
@@ -100,6 +108,19 @@ def _require_warehouse_id(settings: RunSettings) -> str:
     if settings.warehouse_id is None:
         raise OrchestratorError("--warehouse-id is required.")
     return settings.warehouse_id
+
+
+def _validate_github_oidc_environment() -> None:
+    auth_type = os.getenv("DATABRICKS_AUTH_TYPE", "").strip().lower()
+    if auth_type != "github-oidc":
+        return
+
+    if not os.getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+        raise OrchestratorError(
+            "DATABRICKS_AUTH_TYPE=github-oidc requires a GitHub Actions OIDC token, "
+            "but ACTIONS_ID_TOKEN_REQUEST_TOKEN is not set. "
+            "Ensure your workflow/job has 'permissions: id-token: write'."
+        )
 
 
 def _run_kwargs(settings: RunSettings, namespace: argparse.Namespace, *, dry_run: bool) -> dict:
@@ -141,6 +162,7 @@ def cmd_validate(settings: RunSettings) -> int:
 
 def cmd_plan(settings: RunSettings, namespace: argparse.Namespace) -> int:
     kwargs = _run_kwargs(settings, namespace, dry_run=True)
+    _validate_github_oidc_environment()
     workspace_client = WorkspaceClient(profile=settings.profile)
     run(workspace_client=workspace_client, **kwargs)
     return EXIT_SUCCESS
@@ -148,6 +170,7 @@ def cmd_plan(settings: RunSettings, namespace: argparse.Namespace) -> int:
 
 def cmd_apply(settings: RunSettings, namespace: argparse.Namespace) -> int:
     kwargs = _run_kwargs(settings, namespace, dry_run=False)
+    _validate_github_oidc_environment()
     workspace_client = WorkspaceClient(profile=settings.profile)
     run(workspace_client=workspace_client, **kwargs)
     return EXIT_SUCCESS
@@ -188,7 +211,18 @@ def run_cli(argv: list[str] | None = None) -> int:
     cli_overrides = {
         key: value
         for key, value in vars(namespace).items()
-        if key not in {"command", "legacy", "settings_file", "verbose", "quiet", "dry_run"}
+        if key not in {
+            "command",
+            "legacy",
+            "settings_file",
+            "verbose",
+            "quiet",
+            "dry_run",
+            "manage_tags_for_catalogs",
+            "manage_privileges_for_catalogs",
+            "manage_taggables_for_catalogs",
+            "create_taggables_for_catalogs",
+        }
     }
     settings_file = getattr(namespace, "settings_file", None)
     settings = resolve_settings(cli_overrides, settings_file=settings_file)
