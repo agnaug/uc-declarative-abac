@@ -24,6 +24,18 @@ inputs:
     description: If "true", print the planned changes without executing them.
     required: false
     default: 'false'
+  output:
+    description: >-
+      Output style for plan rendering. ``compact`` keeps the existing
+      domain-grouped output. ``resource`` adds a Terraform-style
+      resource-grouped plan block.
+    required: false
+    default: 'compact'
+  no-color:
+    description: >-
+      If "true", disable ANSI colors in the resource plan renderer.
+    required: false
+    default: 'false'
   use-workspace-scim:
     description: >-
       If "true", fetch principals from the workspace SCIM API instead of the account
@@ -211,6 +223,8 @@ runs:
         WAREHOUSE_ID: ${{ inputs.warehouse-id }}
         PROFILE: ${{ inputs.profile }}
         DRY_RUN: ${{ inputs.dry-run }}
+        OUTPUT: ${{ inputs.output }}
+        NO_COLOR_OUTPUT: ${{ inputs.no-color }}
         USE_WORKSPACE_SCIM: ${{ inputs.use-workspace-scim }}
         ENABLE_TAG_MANAGEMENT: ${{ inputs.enable-tag-management }}
         ENABLE_PRIVILEGE_MANAGEMENT: ${{ inputs.enable-privilege-management }}
@@ -244,6 +258,10 @@ runs:
           --config-dir "$CONFIG_DIR"
           --warehouse-id "$WAREHOUSE_ID"
         )
+        args+=(--output "$OUTPUT")
+        if [[ "$NO_COLOR_OUTPUT" == "true" ]]; then
+          args+=(--no-color)
+        fi
         if [[ -n "$PROFILE" ]]; then
           args+=(--profile "$PROFILE")
         fi

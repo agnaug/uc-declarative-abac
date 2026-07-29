@@ -82,6 +82,10 @@ The CLI has three subcommands:
 
 Global flags: `--version`, `--verbose`, `--quiet`, `--settings-file <path>`.
 
+Run-output flags (plan/apply): `--output compact|resource` and `--no-color`.
+`--output=resource` renders a Terraform-style resource-grouped plan block; `compact`
+keeps the existing domain-grouped log lines.
+
 **Settings file.** Place a `uc-abac.yml` in the working directory (or pass `--settings-file`) to avoid repeating flags on every run:
 
 ```yaml
@@ -130,6 +134,8 @@ The repo ships a composite GitHub Action at `deploy/action.yml` so any other rep
 | `warehouse-id` | yes | — | SQL warehouse ID used to execute UC queries |
 | `profile` | no | `''` | Databricks CLI profile name from `~/.databrickscfg`; omit to use env-based auth (see the [Authentication](#authentication) table) |
 | `dry-run` | no | `'false'` | Print planned changes without executing when `'true'` |
+| `output` | no | `'compact'` | Plan output style: `'compact'` (existing domain-grouped format) or `'resource'` (Terraform-style resource-grouped block) |
+| `no-color` | no | `'false'` | Disable ANSI colors in the resource plan renderer |
 | `use-workspace-scim` | no | `'false'` | Fetch principals from the workspace SCIM API instead of the account SCIM proxy when `'true'`. The account-level system groups `account users` and `account admins` are automatically included, since the workspace SCIM API does not surface them. **Incompatible with configuring `resources.groups`** — group management requires the account SCIM proxy, so combining the two errors out |
 | `skip-users-fetch` | no | `'false'` | Skip listing users and treat the user set as empty when `'true'`. For organisations that govern access only via groups and service principals, this avoids the slowest SCIM list call and speeds up the initial fetch significantly in accounts with many users. It is useful when running interactively for a faster fetch time, but **it is not intended for production use.** |
 | `enable-group-creation` | no | `'false'` | Permit the engine to create account groups declared under `resources.groups` that don't yet exist, **with their configured members** (the engine automatically gets the `MANAGER` role on groups it creates). Independent of `enable-group-management`: this flag only creates missing groups |

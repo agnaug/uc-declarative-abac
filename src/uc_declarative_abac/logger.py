@@ -138,9 +138,11 @@ class ChangeLogger:
         self,
         dry_run: bool = False,
         logger: logging.Logger | None = None,
+        show_changes: bool = True,
     ) -> None:
         self._logger = logger or _default_logger
         self._dry_run = dry_run
+        self._show_changes = show_changes
         self._tags_added = 0
         self._tags_updated = 0
         self._tags_removed = 0
@@ -223,7 +225,8 @@ class ChangeLogger:
 
     def _log_info(self, message: str) -> None:
         """Log an INFO message."""
-        self._logger.info(message)
+        if self._show_changes:
+            self._logger.info(message)
 
     # ------------------------------------------------------------------
     # Tag logging

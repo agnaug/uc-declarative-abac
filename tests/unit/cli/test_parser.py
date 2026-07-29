@@ -39,3 +39,17 @@ def test_cli_reports_version(capsys):
     with pytest.raises(SystemExit) as exc_info:
         parse_cli_args(["--version"])
     assert exc_info.value.code == 0
+
+
+def test_parser_accepts_resource_output_flag():
+    namespace = parse_cli_args(
+        ["plan", "--config-dir", "cfg", "--warehouse-id", "wh", "--output", "resource"],
+    )
+    assert namespace.output == "resource"
+
+
+def test_parser_accepts_no_color_flag():
+    namespace = parse_cli_args(
+        ["plan", "--config-dir", "cfg", "--warehouse-id", "wh", "--no-color"],
+    )
+    assert namespace.no_color is True

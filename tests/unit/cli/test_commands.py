@@ -162,3 +162,25 @@ def test_commands_apply_passes_dry_run_false(monkeypatch):
     )
     assert exit_code == 0
     assert captured["dry_run"] is False
+
+
+def test_commands_passes_resource_output_flags(monkeypatch):
+    captured: dict = {}
+
+    def _fake_run(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(cli, "WorkspaceClient", lambda **_: object())
+    exit_code = cli.run_cli(
+        [
+            "plan",
+            "--config-dir", "cfg",
+            "--warehouse-id", "wh",
+            "--output", "resource",
+            "--no-color",
+        ],
+    )
+    assert exit_code == 0
+    assert captured["output"] == "resource"
+    assert captured["no_color"] is True

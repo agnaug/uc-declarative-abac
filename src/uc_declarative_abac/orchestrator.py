@@ -53,6 +53,7 @@ from uc_declarative_abac.securables import (
     SecurableAttributes,
     SecurableDiff,
 )
+from uc_declarative_abac.render import render_resource_plan
 from uc_declarative_abac.logger import ChangeLogger
 from uc_declarative_abac.tags import (
     compile_desired_tags,
@@ -156,6 +157,8 @@ def run(
     force: bool = False,
     ref_override_strategy: Literal["merge", "replace"] = "merge",
     max_parallel_changes: int = 8,
+    output: Literal["compact", "resource"] = "compact",
+    no_color: bool = False,
 ) -> OrchestratorDiffsResult:
     """Run the full governance pipeline: discover, resolve, compile, diff, apply.
 
@@ -298,7 +301,12 @@ def run(
         manage_groups=group_domain_active and bool(desired_groups),
         skip_users_fetch=skip_users_fetch,
     )
-    change_logger = ChangeLogger(dry_run=dry_run, logger=_logger)
+    show_compact_changes = not (dry_run and output == "resource")
+    change_logger = ChangeLogger(
+        dry_run=dry_run,
+        logger=_logger,
+        show_changes=show_compact_changes,
+    )
     change_logger.log_banner()
     _logger.info("  Fetching current state from workspace (this can take several minutes)...")
     # actual_tags is needed by either the tags domain (for the diff) or the privileges
@@ -449,6 +457,18 @@ def run(
     else:
         privilege_diff = PrivilegeDiff()
 
+    diffs = OrchestratorDiffsResult(
+        group_diff=group_diff,
+        securable_diff=securable_diff,
+        governed_tag_diff=governed_tag_diff,
+        tag_diff=tag_diff,
+        policy_diff=policy_diff,
+        privilege_diff=privilege_diff,
+    )
+    if output == "resource":
+        for line in render_resource_plan(diffs, no_color=no_color):
+            _logger.info(line)
+
     # 9. Log and execute (or dry-run) — group management runs first.
     if (group_diff.groups_to_create or group_diff.members_to_add
             or group_diff.members_to_remove or group_diff.groups_to_rename):
@@ -501,11 +521,4 @@ def run(
     if change_logger.has_errors:
         raise ExecutionBatchError(change_logger.errors)
 
-    return OrchestratorDiffsResult(
-        group_diff=group_diff,
-        securable_diff=securable_diff,
-        governed_tag_diff=governed_tag_diff,
-        tag_diff=tag_diff,
-        policy_diff=policy_diff,
-        privilege_diff=privilege_diff,
-    )
+    return diffs
