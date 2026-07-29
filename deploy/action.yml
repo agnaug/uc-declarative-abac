@@ -20,6 +20,20 @@ inputs:
       or a metadata/managed-identity source. Set these on the step's env block.
     required: false
     default: ''
+  auth-type:
+    description: >-
+      Optional explicit Databricks auth type (for example ``github-oidc``).
+      When set, this action exports it as ``DATABRICKS_AUTH_TYPE`` before
+      invoking the CLI.
+    required: false
+    default: ''
+  client-id:
+    description: >-
+      Optional Databricks OAuth client ID (service principal application ID).
+      Useful with ``auth-type=github-oidc``; exported as
+      ``DATABRICKS_CLIENT_ID`` when set.
+    required: false
+    default: ''
   dry-run:
     description: If "true", print the planned changes without executing them.
     required: false
@@ -210,6 +224,8 @@ runs:
         CONFIG_DIR: ${{ inputs.config-dir }}
         WAREHOUSE_ID: ${{ inputs.warehouse-id }}
         PROFILE: ${{ inputs.profile }}
+        AUTH_TYPE: ${{ inputs.auth-type }}
+        CLIENT_ID: ${{ inputs.client-id }}
         DRY_RUN: ${{ inputs.dry-run }}
         USE_WORKSPACE_SCIM: ${{ inputs.use-workspace-scim }}
         ENABLE_TAG_MANAGEMENT: ${{ inputs.enable-tag-management }}
@@ -235,6 +251,12 @@ runs:
         ENABLE_GROUP_MANAGEMENT: ${{ inputs.enable-group-management }}
         IGNORE_UNRESOLVABLE_PRINCIPALS: ${{ inputs.ignore-unresolvable-principals }}
       run: |
+        if [[ -n "$AUTH_TYPE" ]]; then
+          export DATABRICKS_AUTH_TYPE="$AUTH_TYPE"
+        fi
+        if [[ -n "$CLIENT_ID" ]]; then
+          export DATABRICKS_CLIENT_ID="$CLIENT_ID"
+        fi
         subcommand="apply"
         if [[ "$DRY_RUN" == "true" ]]; then
           subcommand="plan"

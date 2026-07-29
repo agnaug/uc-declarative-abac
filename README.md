@@ -105,12 +105,15 @@ The engine delegates authentication to the Databricks SDK's [unified authenticat
 |---|---|---|
 | Personal Access Token (PAT) | `DATABRICKS_HOST`, `DATABRICKS_TOKEN` | CI, scripted runs, GitHub Actions |
 | OAuth M2M client credentials | `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET` | Service-principal automation |
+| GitHub OIDC federation | `DATABRICKS_AUTH_TYPE=github-oidc`, `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID` | GitHub Actions without long-lived Databricks secrets |
 | Azure service principal | `DATABRICKS_HOST`, `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_TENANT_ID` | Azure Databricks workspaces |
 | CLI profile | `--profile <name>` + matching entry in `~/.databrickscfg` | Local development |
 | Default profile | `[DEFAULT]` section in `~/.databrickscfg` (no `--profile` flag needed) | Local development |
 | Metadata service / managed identity | Runtime-supplied credentials | Databricks Apps, cluster-bound runs |
 
 Resolution precedence matches the SDK's unified-auth chain: explicit `--profile` takes precedence, followed by env vars, `~/.databrickscfg`, and finally the metadata service. Omit `--profile` entirely to let the SDK pick whichever source is configured in the current environment.
+
+For GitHub OIDC, the workflow or job must include `permissions: id-token: write` so GitHub mints an OIDC token for the SDK. If `DATABRICKS_AUTH_TYPE=github-oidc` is set but that token is unavailable, the CLI fails fast with a targeted configuration error.
 
 > **Required permissions.** Whichever identity the engine authenticates as (typically a service principal for automation) must hold:
 > - **Workspace admin** on the target workspace — needed to execute SQL on the configured warehouse and manage UC object owners.
@@ -129,6 +132,8 @@ The repo ships a composite GitHub Action at `deploy/action.yml` so any other rep
 | `config-dir` | yes | — | Path to the YAML config directory, relative to the caller's repo root |
 | `warehouse-id` | yes | — | SQL warehouse ID used to execute UC queries |
 | `profile` | no | `''` | Databricks CLI profile name from `~/.databrickscfg`; omit to use env-based auth (see the [Authentication](#authentication) table) |
+| `auth-type` | no | `''` | Optional explicit auth type exported as `DATABRICKS_AUTH_TYPE` (for example `github-oidc`) |
+| `client-id` | no | `''` | Optional OAuth client ID exported as `DATABRICKS_CLIENT_ID` (typically the Databricks service principal application ID) |
 | `dry-run` | no | `'false'` | Print planned changes without executing when `'true'` |
 | `use-workspace-scim` | no | `'false'` | Fetch principals from the workspace SCIM API instead of the account SCIM proxy when `'true'`. The account-level system groups `account users` and `account admins` are automatically included, since the workspace SCIM API does not surface them. **Incompatible with configuring `resources.groups`** — group management requires the account SCIM proxy, so combining the two errors out |
 | `skip-users-fetch` | no | `'false'` | Skip listing users and treat the user set as empty when `'true'`. For organisations that govern access only via groups and service principals, this avoids the slowest SCIM list call and speeds up the initial fetch significantly in accounts with many users. It is useful when running interactively for a faster fetch time, but **it is not intended for production use.** |
@@ -170,22 +175,35 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: liamperritt/uc-declarative-abac/deploy@v0.7.1
         with:
           config-dir: configs/
           warehouse-id: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+          auth-type: github-oidc
+          client-id: ${{ vars.DATABRICKS_CLIENT_ID }}
           enable-tag-management: 'true'
           enable-privilege-management: 'true'
           dry-run: ${{ github.event_name == 'pull_request' }}
           force: 'true'
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 ```
 
-Swap `DATABRICKS_TOKEN` for `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` for OAuth M2M, or the Azure SP variables for Azure Databricks. Pinning to an immutable ref (e.g. a commit SHA or a signed tag) is recommended over `@main`.
+Swap `auth-type` / `client-id` for `DATABRICKS_TOKEN` (PAT), `DATABRICKS_CLIENT_ID` + `DATABRICKS_CLIENT_SECRET` (OAuth M2M), or the Azure SP variables for Azure Databricks. Pinning to an immutable ref (e.g. a commit SHA or a signed tag) is recommended over `@main`.
+
+For GitHub OIDC, configure a Databricks federation policy for the target service principal (account-admin step, outside this repo), for example:
+
+```bash
+databricks account service-principal-federation-policy create <sp-id> --json '{
+  "policy_id": "github-actions-policy",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "audiences": ["https://github.com/<org>"],
+  "subject": "repo:<org>/<repo>:environment:prod"
+}'
+```
 
 ## What You Can Define in YAML
 
