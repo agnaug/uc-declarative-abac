@@ -87,7 +87,14 @@ def _configure_logging(namespace: argparse.Namespace) -> None:
         level = logging.DEBUG
     else:
         level = logging.INFO
-    logging.basicConfig(level=level, format="%(message)s", force=True)
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        root_logger.setLevel(level)
+        formatter = logging.Formatter("%(message)s")
+        for handler in root_logger.handlers:
+            handler.setFormatter(formatter)
+        return
+    logging.basicConfig(level=level, format="%(message)s")
 
 
 def _require_config_dir(settings: RunSettings) -> Path:
@@ -190,7 +197,18 @@ def run_cli(argv: list[str] | None = None) -> int:
     cli_overrides = {
         key: value
         for key, value in vars(namespace).items()
-        if key not in {"command", "legacy", "settings_file", "verbose", "quiet", "dry_run"}
+        if key not in {
+            "command",
+            "legacy",
+            "settings_file",
+            "verbose",
+            "quiet",
+            "dry_run",
+            "manage_tags_for_catalogs",
+            "manage_privileges_for_catalogs",
+            "manage_taggables_for_catalogs",
+            "create_taggables_for_catalogs",
+        }
     }
     settings_file = getattr(namespace, "settings_file", None)
     settings = resolve_settings(cli_overrides, settings_file=settings_file)

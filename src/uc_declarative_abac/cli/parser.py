@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from uc_declarative_abac.cli import __version__
+try:
+    _CLI_VERSION = version("uc-declarative-abac")
+except PackageNotFoundError:
+    _CLI_VERSION = "0.0.0"
 
 _SUBCOMMANDS = frozenset({"validate", "plan", "apply"})
 
@@ -303,7 +307,7 @@ def _build_modern_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {__version__}",
+        version=f"%(prog)s {_CLI_VERSION}",
     )
     _add_global_arguments(parser)
 
@@ -374,7 +378,7 @@ def _build_legacy_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {__version__}",
+        version=f"%(prog)s {_CLI_VERSION}",
     )
     _add_global_arguments(parser)
     _add_common_run_arguments(parser)
