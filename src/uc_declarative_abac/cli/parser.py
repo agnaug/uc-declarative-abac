@@ -16,6 +16,25 @@ _SUBCOMMANDS = frozenset({"validate", "plan", "apply"})
 def _add_common_run_arguments(parser: argparse.ArgumentParser) -> None:
     """Register optional run flags shared by validate, plan, apply, and legacy mode."""
     parser.add_argument(
+        "--output",
+        type=str,
+        choices=["compact", "resource"],
+        default=argparse.SUPPRESS,
+        help=(
+            "Output format for planned changes. 'compact' keeps the existing domain-grouped "
+            "lines; 'resource' renders a Terraform-style resource-grouped plan block first."
+        ),
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "Disable ANSI colors in the resource output renderer (also honored automatically "
+            "when stdout is not a TTY or NO_COLOR is set)."
+        ),
+    )
+    parser.add_argument(
         "--profile",
         type=str,
         default=argparse.SUPPRESS,

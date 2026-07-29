@@ -37,6 +37,8 @@ _ENV_FIELD_MAP: dict[str, str] = {
     "force": "FORCE",
     "ref_override_strategy": "REF_OVERRIDE_STRATEGY",
     "max_parallel_changes": "MAX_PARALLEL_CHANGES",
+    "output": "OUTPUT",
+    "no_color": "NO_COLOR",
 }
 
 
@@ -68,6 +70,8 @@ class RunSettings(BaseModel):
     force: bool = False
     ref_override_strategy: Literal["merge", "replace"] = "merge"
     max_parallel_changes: int = Field(default=8, ge=1)
+    output: Literal["compact", "resource"] = "compact"
+    no_color: bool = False
 
 
 def _coerce_env_value(field_name: str, raw: str, field_info: Any) -> Any:

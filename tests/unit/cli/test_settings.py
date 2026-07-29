@@ -37,3 +37,11 @@ def test_settings_loads_boolean_from_env(monkeypatch):
     monkeypatch.setenv("UC_ABAC_ENABLE_TAG_MANAGEMENT", "true")
     settings = resolve_settings({}, settings_file=None)
     assert settings.enable_tag_management is True
+
+
+def test_settings_loads_output_and_no_color_from_env(monkeypatch):
+    monkeypatch.setenv("UC_ABAC_OUTPUT", "resource")
+    monkeypatch.setenv("UC_ABAC_NO_COLOR", "true")
+    settings = resolve_settings({}, settings_file=None)
+    assert settings.output == "resource"
+    assert settings.no_color is True

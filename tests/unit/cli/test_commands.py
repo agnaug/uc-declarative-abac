@@ -181,3 +181,25 @@ def test_commands_plan_fails_fast_for_github_oidc_without_id_token(monkeypatch):
     )
     assert exit_code == 3
     assert constructed is False
+
+
+def test_commands_passes_resource_output_flags(monkeypatch):
+    captured: dict = {}
+
+    def _fake_run(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(cli, "WorkspaceClient", lambda **_: object())
+    exit_code = cli.run_cli(
+        [
+            "plan",
+            "--config-dir", "cfg",
+            "--warehouse-id", "wh",
+            "--output", "resource",
+            "--no-color",
+        ],
+    )
+    assert exit_code == 0
+    assert captured["output"] == "resource"
+    assert captured["no_color"] is True

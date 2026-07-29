@@ -150,6 +150,8 @@ def _run_kwargs(settings: RunSettings, namespace: argparse.Namespace, *, dry_run
         "force": settings.force,
         "ref_override_strategy": settings.ref_override_strategy,
         "max_parallel_changes": settings.max_parallel_changes,
+        "output": settings.output,
+        "no_color": settings.no_color,
     }
 
 
