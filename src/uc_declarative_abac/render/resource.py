@@ -30,6 +30,12 @@ class _PlanCount:
     destroy: int = 0
 
 
+@dataclass(frozen=True)
+class _ChangeEntry:
+    symbol: str
+    text: str
+
+
 def _resource_sort_key(resource_key: tuple[str, str]) -> tuple[int, str]:
     kind, name = resource_key
     if kind == "governed_tag":
@@ -80,22 +86,20 @@ def _paint(symbol: str, *, color: bool) -> str:
 
 
 def _append_change(
-    grouped: dict[tuple[str, str], list[str]],
+    grouped: dict[tuple[str, str], list[_ChangeEntry]],
     resource_key: tuple[str, str],
     symbol: str,
     text: str,
-    *,
-    color: bool,
 ) -> None:
-    grouped[resource_key].append(f"      {_paint(symbol, color=color)} {text}")
+    grouped[resource_key].append(_ChangeEntry(symbol=symbol, text=text))
 
 
 def _build_grouped_lines(
     diffs: OrchestratorDiffsResult,
     *,
     color: bool,
-) -> tuple[dict[tuple[str, str], list[str]], _PlanCount]:
-    grouped: dict[tuple[str, str], list[str]] = defaultdict(list)
+) -> tuple[dict[tuple[str, str], list[_ChangeEntry]], _PlanCount]:
+    grouped: dict[tuple[str, str], list[_ChangeEntry]] = defaultdict(list)
     add = change = destroy = 0
 
     for update in diffs.securable_diff.attributes_to_update:
@@ -105,28 +109,27 @@ def _build_grouped_lines(
             key,
             "~",
             f'{update.attribute} = {_display_set(update.old_value)} -> {_display_set(update.new_value)}',
-            color=color,
         )
         change += 1
 
     for securable in diffs.securable_diff.securables_to_create:
         key = (securable.securable_type.value.lower(), securable.full_name)
         _append_change(
-            grouped, key, "+", f"create {_securable_change_label(securable)}", color=color,
+            grouped, key, "+", f"create {_securable_change_label(securable)}",
         )
         add += 1
 
     for securable in diffs.securable_diff.securables_to_replace:
         key = (securable.securable_type.value.lower(), securable.full_name)
         _append_change(
-            grouped, key, "~", f"replace {_securable_change_label(securable)}", color=color,
+            grouped, key, "~", f"replace {_securable_change_label(securable)}",
         )
         change += 1
 
     for tag in diffs.tag_diff.to_add:
         key = (tag.securable_type.value.lower(), tag.securable_full_name)
         _append_change(
-            grouped, key, "+", f'tag.{tag.tag_name} = "{tag.tag_value}"', color=color,
+            grouped, key, "+", f'tag.{tag.tag_name} = "{tag.tag_value}"',
         )
         add += 1
 
@@ -136,13 +139,13 @@ def _build_grouped_lines(
             (tag.securable_type, tag.securable_full_name, tag.tag_name), ""
         ) or ""
         _append_change(
-            grouped, key, "~", f'tag.{tag.tag_name} = "{old}" -> "{tag.tag_value}"', color=color,
+            grouped, key, "~", f'tag.{tag.tag_name} = "{old}" -> "{tag.tag_value}"',
         )
         change += 1
 
     for tag in diffs.tag_diff.to_remove:
         key = (tag.securable_type.value.lower(), tag.securable_full_name)
-        _append_change(grouped, key, "-", f"tag.{tag.tag_name}", color=color)
+        _append_change(grouped, key, "-", f"tag.{tag.tag_name}")
         destroy += 1
 
     for policy in diffs.policy_diff.to_create:
@@ -152,7 +155,6 @@ def _build_grouped_lines(
             key,
             "+",
             f"{policy.policy_type.value}_policy {policy.name}",
-            color=color,
         )
         add += 1
 
@@ -163,7 +165,6 @@ def _build_grouped_lines(
             key,
             "~",
             f"{policy.policy_type.value}_policy {policy.name}",
-            color=color,
         )
         change += 1
 
@@ -174,7 +175,6 @@ def _build_grouped_lines(
             key,
             "-",
             f"{policy.policy_type.value}_policy {policy.name}",
-            color=color,
         )
         destroy += 1
 
@@ -185,7 +185,6 @@ def _build_grouped_lines(
             key,
             "+",
             f'{privilege.privilege_type.value.upper()} to "{privilege.principal.name}"',
-            color=color,
         )
         add += 1
 
@@ -196,38 +195,36 @@ def _build_grouped_lines(
             key,
             "-",
             f'{privilege.privilege_type.value.upper()} from "{privilege.principal.name}"',
-            color=color,
         )
         destroy += 1
 
     for governed in diffs.governed_tag_diff.to_create:
         key = ("governed_tag", governed.name)
-        _append_change(grouped, key, "+", "create", color=color)
+        _append_change(grouped, key, "+", "create")
         add += 1
     for governed in diffs.governed_tag_diff.to_update:
         key = ("governed_tag", governed.name)
-        _append_change(grouped, key, "~", "update", color=color)
+        _append_change(grouped, key, "~", "update")
         change += 1
     for governed in diffs.governed_tag_diff.to_delete:
         key = ("governed_tag", governed.name)
-        _append_change(grouped, key, "-", "delete", color=color)
+        _append_change(grouped, key, "-", "delete")
         destroy += 1
 
     for group_name, members in diffs.group_diff.groups_to_create.items():
         key = ("group", group_name)
-        _append_change(grouped, key, "+", "create", color=color)
+        _append_change(grouped, key, "+", "create")
         if members:
             _append_change(
                 grouped,
                 key,
                 "~",
                 "members += " + ", ".join(f'"{m.name}"' for m in sorted(members, key=lambda p: p.name)),
-                color=color,
             )
         add += 1
     for rename in diffs.group_diff.groups_to_rename:
         key = ("group", rename.old_display_name)
-        _append_change(grouped, key, "~", f'name = "{rename.old_display_name}" -> "{rename.new_display_name}"', color=color)
+        _append_change(grouped, key, "~", f'name = "{rename.old_display_name}" -> "{rename.new_display_name}"')
         change += 1
     for group_name, members in diffs.group_diff.members_to_add.items():
         key = ("group", group_name)
@@ -236,7 +233,6 @@ def _build_grouped_lines(
             key,
             "~",
             "members += " + ", ".join(f'"{m.name}"' for m in sorted(members, key=lambda p: p.name)),
-            color=color,
         )
         change += len(members)
     for group_name, members in diffs.group_diff.members_to_remove.items():
@@ -246,7 +242,6 @@ def _build_grouped_lines(
             key,
             "~",
             "members -= " + ", ".join(f'"{m.name}"' for m in sorted(members, key=lambda p: p.name)),
-            color=color,
         )
         change += len(members)
 
@@ -266,9 +261,10 @@ def render_resource_plan(
     lines = ["", "UC Declarative ABAC will perform the following actions:", ""]
     for resource_key in sorted(grouped.keys(), key=_resource_sort_key):
         entry_lines = grouped[resource_key]
-        header_symbol = entry_lines[0].strip().split(" ", maxsplit=1)[0]
+        header_symbol = entry_lines[0].symbol
         lines.append(f"  {_paint(header_symbol, color=use_color)} {_resource_label(resource_key)}")
-        lines.extend(entry_lines)
+        for entry in entry_lines:
+            lines.append(f"      {_paint(entry.symbol, color=use_color)} {entry.text}")
         lines.append("")
 
     lines.append(

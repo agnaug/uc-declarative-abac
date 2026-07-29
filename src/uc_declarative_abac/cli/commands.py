@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -14,6 +15,7 @@ from pydantic import ValidationError
 
 from uc_declarative_abac.cli.parser import parse_cli_args
 from uc_declarative_abac.cli.settings import RunSettings, resolve_settings
+from uc_declarative_abac.linting import lint_config, load_lint_rules
 from uc_declarative_abac.orchestrator import load_config, run
 from uc_declarative_abac.utils import ExecutionBatchError, OrchestratorError
 
@@ -152,6 +154,8 @@ def _run_kwargs(settings: RunSettings, namespace: argparse.Namespace, *, dry_run
         "max_parallel_changes": settings.max_parallel_changes,
         "output": settings.output,
         "no_color": settings.no_color,
+        "enforce_policy_coverage": settings.enforce_policy_coverage,
+        "sensitive_tag_keys": settings.sensitive_tag_keys,
     }
 
 
@@ -159,6 +163,26 @@ def cmd_validate(settings: RunSettings) -> int:
     config_dir = _require_config_dir(settings)
     load_config(config_dir, settings.ref_override_strategy)
     _logger.info("Config validation successful.")
+    return EXIT_SUCCESS
+
+
+def cmd_lint(settings: RunSettings) -> int:
+    config_dir = _require_config_dir(settings)
+    config = load_config(config_dir, settings.ref_override_strategy)
+    rules = load_lint_rules(settings.lint_rules_file)
+    result = lint_config(config, rules)
+    if settings.lint_format == "json":
+        print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    else:
+        if not result.violations:
+            _logger.info("No lint violations found.")
+        for violation in result.violations:
+            _logger.info(
+                f"[{violation.severity.upper()}] {violation.rule_id} "
+                f"{violation.location}: {violation.message}"
+            )
+    if result.has_errors:
+        return EXIT_CONFIG_ERROR
     return EXIT_SUCCESS
 
 
@@ -230,6 +254,8 @@ def run_cli(argv: list[str] | None = None) -> int:
     settings = resolve_settings(cli_overrides, settings_file=settings_file)
 
     try:
+        if namespace.command == "lint":
+            return cmd_lint(settings)
         if namespace.command == "validate":
             return cmd_validate(settings)
         if namespace.command == "plan":

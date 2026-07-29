@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -53,7 +54,10 @@ from uc_declarative_abac.securables import (
     SecurableAttributes,
     SecurableDiff,
 )
-from uc_declarative_abac.render import render_resource_plan
+from uc_declarative_abac.render import (
+    render_json_plan,
+    render_resource_plan,
+)
 from uc_declarative_abac.logger import ChangeLogger
 from uc_declarative_abac.tags import (
     compile_desired_tags,
@@ -62,7 +66,10 @@ from uc_declarative_abac.tags import (
     filter_retained_removals,
     TagDiff,
 )
-from uc_declarative_abac.types import SecurableType
+from uc_declarative_abac.types import (
+    PolicyType,
+    SecurableType,
+)
 from uc_declarative_abac.utils import (
     ExecutionBatchError,
     OrchestratorError,
@@ -86,6 +93,82 @@ class OrchestratorDiffsResult:
     tag_diff: TagDiff
     policy_diff: PolicyDiff
     privilege_diff: PrivilegeDiff
+
+
+def _table_name_for_column(column_full_name: str) -> str:
+    parts = column_full_name.split(".")
+    if len(parts) < 4:
+        return column_full_name
+    return ".".join(parts[:3])
+
+
+def _policy_applies_to_table(policy_scope_type: SecurableType, policy_scope_name: str, table_name: str) -> bool:
+    if policy_scope_type == SecurableType.TABLE:
+        return policy_scope_name == table_name
+    if policy_scope_type == SecurableType.SCHEMA:
+        return table_name.startswith(f"{policy_scope_name}.")
+    if policy_scope_type == SecurableType.CATALOG:
+        return table_name.startswith(f"{policy_scope_name}.")
+    return False
+
+
+def _policy_condition_mentions_tag(policy, tag_key: str) -> bool:
+    match_key = f"'{tag_key}'"
+    if policy.when_condition and match_key in policy.when_condition:
+        return True
+    return any(match_key in condition for _, condition in policy.match_columns)
+
+
+def _policy_has_mask_coverage(policies: set, table_name: str, tag_key: str) -> bool:
+    for policy in policies:
+        if policy.policy_type != PolicyType.MASK:
+            continue
+        if not _policy_applies_to_table(policy.securable_type, policy.securable_full_name, table_name):
+            continue
+        if _policy_condition_mentions_tag(policy, tag_key):
+            return True
+    return False
+
+
+def _policy_has_filter_coverage(policies: set, table_name: str, tag_key: str) -> bool:
+    for policy in policies:
+        if policy.policy_type != PolicyType.FILTER:
+            continue
+        if not _policy_applies_to_table(policy.securable_type, policy.securable_full_name, table_name):
+            continue
+        if _policy_condition_mentions_tag(policy, tag_key):
+            return True
+    return False
+
+
+def _enforce_policy_coverage(
+    desired_tags: set,
+    desired_policies: set,
+    sensitive_tag_keys: frozenset[str],
+) -> None:
+    violations: list[str] = []
+    for tag in desired_tags:
+        if tag.tag_name not in sensitive_tag_keys:
+            continue
+        if tag.securable_type == SecurableType.COLUMN:
+            table_name = _table_name_for_column(tag.securable_full_name)
+            if not _policy_has_mask_coverage(desired_policies, table_name, tag.tag_name):
+                violations.append(
+                    f"COLUMN {tag.securable_full_name} has sensitive tag '{tag.tag_name}' "
+                    f"but no matching MASK policy coverage was found."
+                )
+        if tag.securable_type == SecurableType.TABLE:
+            if not _policy_has_filter_coverage(desired_policies, tag.securable_full_name, tag.tag_name):
+                violations.append(
+                    f"TABLE {tag.securable_full_name} has sensitive tag '{tag.tag_name}' "
+                    f"but no matching FILTER policy coverage was found."
+                )
+    if violations:
+        details = "\n - ".join(sorted(violations))
+        raise OrchestratorError(
+            "Policy coverage enforcement failed:\n"
+            f" - {details}"
+        )
 
 
 def _filter_taggable_attributes(
@@ -157,8 +240,10 @@ def run(
     force: bool = False,
     ref_override_strategy: Literal["merge", "replace"] = "merge",
     max_parallel_changes: int = 8,
-    output: Literal["compact", "resource"] = "compact",
+    output: Literal["compact", "resource", "json"] = "compact",
     no_color: bool = False,
+    enforce_policy_coverage: bool = False,
+    sensitive_tag_keys: str = "pii,sensitivity,classification",
 ) -> OrchestratorDiffsResult:
     """Run the full governance pipeline: discover, resolve, compile, diff, apply.
 
@@ -269,6 +354,9 @@ def run(
     ignore_unresolvable = frozenset(
         p.strip() for p in ignore_unresolvable_principals.split(",") if p.strip()
     )
+    sensitive_keys = frozenset(
+        p.strip() for p in sensitive_tag_keys.split(",") if p.strip()
+    )
 
     # 2. Compile desired up-front so we can scope downstream fetches:
     #    - governed tags name set → rule-set fetches restricted to (actual ∩ desired)
@@ -301,14 +389,17 @@ def run(
         manage_groups=group_domain_active and bool(desired_groups),
         skip_users_fetch=skip_users_fetch,
     )
-    show_compact_changes = not (dry_run and output == "resource")
+    json_mode = output == "json"
+    show_compact_changes = output == "compact" or (output == "resource" and not dry_run)
     change_logger = ChangeLogger(
         dry_run=dry_run,
         logger=_logger,
         show_changes=show_compact_changes,
+        emit_logs=not json_mode,
     )
     change_logger.log_banner()
-    _logger.info("  Fetching current state from workspace (this can take several minutes)...")
+    if not json_mode:
+        _logger.info("  Fetching current state from workspace (this can take several minutes)...")
     # actual_tags is needed by either the tags domain (for the diff) or the privileges
     # domain (for policy matching against on-disk tag state when tag management is off).
     need_actual_tags = enable_tag_management or enable_privilege_management
@@ -330,7 +421,8 @@ def run(
         principals_f.result()
         actual_tags = actual_tags_f.result() if actual_tags_f is not None else set()
         actual_privileges = actual_privs_f.result() if actual_privs_f is not None else set()
-    _logger.info("  Successfully fetched current state")
+    if not json_mode:
+        _logger.info("  Successfully fetched current state")
 
     # Fetch membership for the configured groups only — one GET /Groups/{id} per
     # group (the account SCIM proxy list call doesn't return members inline),
@@ -398,9 +490,14 @@ def run(
         ignore_unresolvable=ignore_unresolvable,
     )
 
+    desired_tags = (
+        compile_desired_tags(config, governed_tags, change_logger)
+        if (enable_tag_management or enforce_policy_coverage)
+        else set()
+    )
+
     # 6. Tags workflow
     if enable_tag_management:
-        desired_tags = compile_desired_tags(config, governed_tags, change_logger)
         in_scope_desired_tags = {
             t for t in desired_tags if in_namespace_scope(t.securable_full_name, tag_scope)
         }
@@ -432,6 +529,8 @@ def run(
     desired_policies = compile_desired_policies(
         config, governed_tag_names, change_logger,
     )
+    if enforce_policy_coverage:
+        _enforce_policy_coverage(desired_tags, desired_policies, sensitive_keys)
     policy_diff = compute_policy_diff(
         desired_policies, actual_policies, resolver, change_logger,
         ignore_unresolvable=ignore_unresolvable,
@@ -468,7 +567,6 @@ def run(
     if output == "resource":
         for line in render_resource_plan(diffs, no_color=no_color):
             _logger.info(line)
-
     # 9. Log and execute (or dry-run) — group management runs first.
     if (group_diff.groups_to_create or group_diff.members_to_add
             or group_diff.members_to_remove or group_diff.groups_to_rename):
@@ -519,6 +617,25 @@ def run(
     change_logger.log_summary()
 
     if change_logger.has_errors:
+        if json_mode:
+            payload = render_json_plan(
+                diffs,
+                mode="plan" if dry_run else "apply",
+                dry_run=dry_run,
+                warnings=[str(w.exception) for w in change_logger.warnings],
+                errors=[str(e.exception) for e in change_logger.errors],
+            )
+            print(json.dumps(payload, indent=2, sort_keys=True))
         raise ExecutionBatchError(change_logger.errors)
+
+    if json_mode:
+        payload = render_json_plan(
+            diffs,
+            mode="plan" if dry_run else "apply",
+            dry_run=dry_run,
+            warnings=[str(w.exception) for w in change_logger.warnings],
+            errors=[],
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True))
 
     return diffs

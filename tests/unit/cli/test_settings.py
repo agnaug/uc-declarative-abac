@@ -45,3 +45,13 @@ def test_settings_loads_output_and_no_color_from_env(monkeypatch):
     settings = resolve_settings({}, settings_file=None)
     assert settings.output == "resource"
     assert settings.no_color is True
+
+
+def test_settings_loads_lint_and_coverage_from_env(monkeypatch):
+    monkeypatch.setenv("UC_ABAC_LINT_FORMAT", "json")
+    monkeypatch.setenv("UC_ABAC_ENFORCE_POLICY_COVERAGE", "true")
+    monkeypatch.setenv("UC_ABAC_SENSITIVE_TAG_KEYS", "pii,classification")
+    settings = resolve_settings({}, settings_file=None)
+    assert settings.lint_format == "json"
+    assert settings.enforce_policy_coverage is True
+    assert settings.sensitive_tag_keys == "pii,classification"

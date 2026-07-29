@@ -39,6 +39,10 @@ _ENV_FIELD_MAP: dict[str, str] = {
     "max_parallel_changes": "MAX_PARALLEL_CHANGES",
     "output": "OUTPUT",
     "no_color": "NO_COLOR",
+    "enforce_policy_coverage": "ENFORCE_POLICY_COVERAGE",
+    "sensitive_tag_keys": "SENSITIVE_TAG_KEYS",
+    "lint_format": "LINT_FORMAT",
+    "lint_rules_file": "LINT_RULES_FILE",
 }
 
 
@@ -70,8 +74,12 @@ class RunSettings(BaseModel):
     force: bool = False
     ref_override_strategy: Literal["merge", "replace"] = "merge"
     max_parallel_changes: int = Field(default=8, ge=1)
-    output: Literal["compact", "resource"] = "compact"
+    output: Literal["compact", "resource", "json"] = "compact"
     no_color: bool = False
+    enforce_policy_coverage: bool = False
+    sensitive_tag_keys: str = "pii,sensitivity,classification"
+    lint_format: Literal["text", "json"] = "text"
+    lint_rules_file: Path | None = None
 
 
 def _coerce_env_value(field_name: str, raw: str, field_info: Any) -> Any:
@@ -80,7 +88,7 @@ def _coerce_env_value(field_name: str, raw: str, field_info: Any) -> Any:
         return raw.strip().lower() in _BOOL_ENV_VALUES
     if annotation is int:
         return int(raw)
-    if field_name == "config_dir":
+    if field_name in {"config_dir", "lint_rules_file"}:
         return Path(raw)
     return raw
 

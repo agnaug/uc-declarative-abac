@@ -10,7 +10,7 @@ try:
 except PackageNotFoundError:
     _CLI_VERSION = "0.0.0"
 
-_SUBCOMMANDS = frozenset({"validate", "plan", "apply"})
+_SUBCOMMANDS = frozenset({"validate", "plan", "apply", "lint"})
 
 
 def _add_common_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -18,11 +18,12 @@ def _add_common_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--output",
         type=str,
-        choices=["compact", "resource"],
+        choices=["compact", "resource", "json"],
         default=argparse.SUPPRESS,
         help=(
             "Output format for planned changes. 'compact' keeps the existing domain-grouped "
-            "lines; 'resource' renders a Terraform-style resource-grouped plan block first."
+            "lines; 'resource' renders a Terraform-style resource-grouped plan block first; "
+            "'json' emits machine-readable plan/apply output."
         ),
     )
     parser.add_argument(
@@ -32,6 +33,24 @@ def _add_common_run_arguments(parser: argparse.ArgumentParser) -> None:
         help=(
             "Disable ANSI colors in the resource output renderer (also honored automatically "
             "when stdout is not a TTY or NO_COLOR is set)."
+        ),
+    )
+    parser.add_argument(
+        "--enforce-policy-coverage",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "Fail plan/apply when sensitive tagged assets are missing required policy coverage "
+            "(mask for sensitive columns, filter for sensitive tables)."
+        ),
+    )
+    parser.add_argument(
+        "--sensitive-tag-keys",
+        type=str,
+        default=argparse.SUPPRESS,
+        help=(
+            "Comma-separated sensitive tag keys used by --enforce-policy-coverage. "
+            "Default: pii,sensitivity,classification."
         ),
     )
     parser.add_argument(
@@ -326,6 +345,32 @@ def _build_modern_parser() -> argparse.ArgumentParser:
         help="Path to the YAML config directory",
     )
     validate_parser.set_defaults(command="validate")
+
+    lint_parser = subparsers.add_parser(
+        "lint",
+        help="Run static governance lint checks on configs.",
+        description="Lint configs for governance guardrails (no Databricks calls).",
+    )
+    lint_parser.add_argument(
+        "--config-dir",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="Path to the YAML config directory",
+    )
+    lint_parser.add_argument(
+        "--lint-rules-file",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="Optional YAML file defining lint rule overrides.",
+    )
+    lint_parser.add_argument(
+        "--lint-format",
+        type=str,
+        choices=["text", "json"],
+        default=argparse.SUPPRESS,
+        help="Lint output format.",
+    )
+    lint_parser.set_defaults(command="lint")
 
     plan_parser = subparsers.add_parser(
         "plan",

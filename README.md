@@ -72,19 +72,24 @@ uc-abac apply --config-dir tests/e2e/configs --warehouse-id <warehouse-id> --ena
 
 ### CLI
 
-The CLI has three subcommands:
+The CLI has four subcommands:
 
 | Subcommand | Description |
 |------------|-------------|
 | `validate` | Parse, resolve, and validate YAML configs locally. No `--warehouse-id` or Databricks credentials required. |
+| `lint` | Run static governance lint checks (tag/policy guardrails) without Databricks calls. |
 | `plan` | Compute and print planned changes without executing (replaces `--dry-run`). |
 | `apply` | Apply governance changes to Unity Catalog. |
 
 Global flags: `--version`, `--verbose`, `--quiet`, `--settings-file <path>`.
 
-Run-output flags (plan/apply): `--output compact|resource` and `--no-color`.
+Run-output flags (plan/apply): `--output compact|resource|json` and `--no-color`.
 `--output=resource` renders a Terraform-style resource-grouped plan block; `compact`
-keeps the existing domain-grouped log lines.
+keeps the existing domain-grouped log lines; `json` emits machine-readable output.
+
+Coverage guardrail flags (plan/apply): `--enforce-policy-coverage` and
+`--sensitive-tag-keys`. When enabled, plan/apply fails if sensitive tagged assets
+lack required policy coverage.
 
 **Settings file.** Place a `uc-abac.yml` in the working directory (or pass `--settings-file`) to avoid repeating flags on every run:
 
@@ -139,8 +144,10 @@ The repo ships a composite GitHub Action at `deploy/action.yml` so any other rep
 | `auth-type` | no | `''` | Optional explicit auth type exported as `DATABRICKS_AUTH_TYPE` (for example `github-oidc`) |
 | `client-id` | no | `''` | Optional OAuth client ID exported as `DATABRICKS_CLIENT_ID` (typically the Databricks service principal application ID) |
 | `dry-run` | no | `'false'` | Print planned changes without executing when `'true'` |
-| `output` | no | `'compact'` | Plan output style: `'compact'` (existing domain-grouped format) or `'resource'` (Terraform-style resource-grouped block) |
+| `output` | no | `'compact'` | Plan output style: `'compact'` (existing domain-grouped format), `'resource'` (Terraform-style resource-grouped block), or `'json'` (machine-readable) |
 | `no-color` | no | `'false'` | Disable ANSI colors in the resource plan renderer |
+| `enforce-policy-coverage` | no | `'false'` | Fail plan/apply when sensitive tagged assets lack required policy coverage |
+| `sensitive-tag-keys` | no | `'pii,sensitivity,classification'` | Comma-separated sensitive tag keys used by coverage enforcement |
 | `use-workspace-scim` | no | `'false'` | Fetch principals from the workspace SCIM API instead of the account SCIM proxy when `'true'`. The account-level system groups `account users` and `account admins` are automatically included, since the workspace SCIM API does not surface them. **Incompatible with configuring `resources.groups`** — group management requires the account SCIM proxy, so combining the two errors out |
 | `skip-users-fetch` | no | `'false'` | Skip listing users and treat the user set as empty when `'true'`. For organisations that govern access only via groups and service principals, this avoids the slowest SCIM list call and speeds up the initial fetch significantly in accounts with many users. It is useful when running interactively for a faster fetch time, but **it is not intended for production use.** |
 | `enable-group-creation` | no | `'false'` | Permit the engine to create account groups declared under `resources.groups` that don't yet exist, **with their configured members** (the engine automatically gets the `MANAGER` role on groups it creates). Independent of `enable-group-management`: this flag only creates missing groups |

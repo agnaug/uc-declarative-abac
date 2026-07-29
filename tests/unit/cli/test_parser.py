@@ -53,3 +53,16 @@ def test_parser_accepts_no_color_flag():
         ["plan", "--config-dir", "cfg", "--warehouse-id", "wh", "--no-color"],
     )
     assert namespace.no_color is True
+
+
+def test_parser_accepts_json_output_flag():
+    namespace = parse_cli_args(
+        ["plan", "--config-dir", "cfg", "--warehouse-id", "wh", "--output", "json"],
+    )
+    assert namespace.output == "json"
+
+
+def test_parser_routes_lint_command():
+    namespace = parse_cli_args(["lint", "--config-dir", "cfg"])
+    assert namespace.command == "lint"
+    assert namespace.config_dir.name == "cfg"

@@ -139,10 +139,12 @@ class ChangeLogger:
         dry_run: bool = False,
         logger: logging.Logger | None = None,
         show_changes: bool = True,
+        emit_logs: bool = True,
     ) -> None:
         self._logger = logger or _default_logger
         self._dry_run = dry_run
         self._show_changes = show_changes
+        self._emit_logs = emit_logs
         self._tags_added = 0
         self._tags_updated = 0
         self._tags_removed = 0
@@ -186,16 +188,20 @@ class ChangeLogger:
     def log_error(self, error: ExecutionError) -> None:
         """Collect an execution error (displayed later via log_errors_section)."""
         self._errors.append(error)
-        self._logger.error(f"  ! Error: {error.context}: {error.exception}")
+        if self._emit_logs:
+            self._logger.error(f"  ! Error: {error.context}: {error.exception}")
 
     def log_warning(self, warning: ExecutionError) -> None:
         """Collect a non-fatal warning. Unlike log_error, this does not set
         has_errors, so a warning-only run still succeeds."""
         self._warnings.append(warning)
-        self._logger.warning(f"  ! Warning: {warning.context}: {warning.exception}")
+        if self._emit_logs:
+            self._logger.warning(f"  ! Warning: {warning.context}: {warning.exception}")
 
     def log_summary(self) -> None:
         """Log a summary of all changes recorded so far."""
+        if not self._emit_logs:
+            return
         self._logger.info("")
         self._logger.info(f"Summary: {self._build_summary()}")
 
@@ -205,6 +211,8 @@ class ChangeLogger:
 
     def log_banner(self) -> None:
         """Log the opening banner."""
+        if not self._emit_logs:
+            return
         title = "UC Declarative ABAC (dry run)" if self._dry_run else "UC Declarative ABAC"
         self._logger.info("")
         self._logger.info(title)
@@ -213,6 +221,8 @@ class ChangeLogger:
 
     def log_section_header(self, name: str) -> None:
         """Log a section header with underline."""
+        if not self._emit_logs:
+            return
         suffix = " (dry run)" if self._dry_run else ""
         header = f"{name}{suffix}"
         self._logger.info("")
@@ -225,7 +235,7 @@ class ChangeLogger:
 
     def _log_info(self, message: str) -> None:
         """Log an INFO message."""
-        if self._show_changes:
+        if self._show_changes and self._emit_logs:
             self._logger.info(message)
 
     # ------------------------------------------------------------------
@@ -533,6 +543,8 @@ class ChangeLogger:
 
     def log_errors_section(self) -> None:
         """Log collected errors and non-fatal warnings as dedicated sections."""
+        if not self._emit_logs:
+            return
         if self._warnings:
             self.log_section_header("Warnings")
             for warning in self._warnings:

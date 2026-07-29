@@ -203,3 +203,54 @@ def test_commands_passes_resource_output_flags(monkeypatch):
     assert exit_code == 0
     assert captured["output"] == "resource"
     assert captured["no_color"] is True
+
+
+def test_commands_passes_policy_coverage_flags(monkeypatch):
+    captured: dict = {}
+
+    def _fake_run(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cli, "run", _fake_run)
+    monkeypatch.setattr(cli, "WorkspaceClient", lambda **_: object())
+    exit_code = cli.run_cli(
+        [
+            "plan",
+            "--config-dir", "cfg",
+            "--warehouse-id", "wh",
+            "--enforce-policy-coverage",
+            "--sensitive-tag-keys", "pii,classification",
+        ],
+    )
+    assert exit_code == 0
+    assert captured["enforce_policy_coverage"] is True
+    assert captured["sensitive_tag_keys"] == "pii,classification"
+
+
+def test_commands_lint_returns_config_error_for_mask_without_except(tmp_path: Path):
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    (config_dir / "resources.yaml").write_text(
+        """
+resources:
+  catalogs:
+    sandbox:
+      name: sandbox
+      schemas:
+        - name: sales
+          tables:
+            - name: orders
+              policies:
+                - name: mask_email
+                  type: mask
+                  function: sandbox.sales.mask_email
+                  columns:
+                    - alias: email
+                      has_tags:
+                        pii: email
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    exit_code = cli.run_cli(["lint", "--config-dir", str(config_dir)])
+    assert exit_code == 3
